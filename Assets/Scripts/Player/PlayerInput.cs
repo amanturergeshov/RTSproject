@@ -1,88 +1,128 @@
-using System;
 using Unity.Cinemachine;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-public class PlayerInput : MonoBehaviour
+
+namespace RTS.Player
 {
-    [SerializeField] private Transform cameraTaret;
-    [SerializeField] private CinemachineCamera cinemachineCamera;
-    [SerializeField] private float KeyboardPanSpeed = 5;
-    [SerializeField] private float zoomSpeed = 5;
-    [SerializeField] private float minZoomDistance = 7.5f;
-    [SerializeField] private float maxZoomDistance = 15;
-    Vector2 moveAmount;
-
-    private CinemachineFollow cinemachineFollow;
-    private float zoomStartTime;
-    private Vector3 startingFollowOffset;
-    private Vector3 targetFollowOffset;
-
-
-    private void Awake()
+    public class PlayerInput : MonoBehaviour
     {
-        if (!cinemachineCamera.TryGetComponent(out cinemachineFollow))
+        [SerializeField] private Transform cameraTaret;
+        [SerializeField] private CinemachineCamera cinemachineCamera;
+        [SerializeField] private CameraConfig cameraConfig;
+
+        private Vector2 moveAmount;
+        private CinemachineFollow cinemachineFollow;
+        private float zoomStartTime;
+        private float rotationStartTime;
+        private Vector3 startingFollowOffset;
+        private float maxRotationAmount;
+
+
+        private void Awake()
         {
-            Debug.LogError("Cinemachine Camera did not have CinemachineFollow. Zoom functionality will not work!");
+            if (!cinemachineCamera.TryGetComponent(out cinemachineFollow))
+            {
+                Debug.LogError("Cinemachine Camera did not have CinemachineFollow. Zoom functionality will not work!");
+            }
+
+            startingFollowOffset = cinemachineFollow.FollowOffset;
+            maxRotationAmount = Mathf.Abs(cinemachineFollow.FollowOffset.z);
         }
 
-        startingFollowOffset = cinemachineFollow.FollowOffset;
-
-    }
-
-    private void Update()
-    {
-        HandlePanning();
-        HandleZooming();
-    }
-    private void HandlePanning()
-    {
-        moveAmount = Vector2.zero;
-
-        if (Keyboard.current.upArrowKey.isPressed)
+        private void Update()
         {
-            moveAmount.y += KeyboardPanSpeed;
+            HandlePanning();
+            HandleZooming();
+            HandleRotation();
         }
-        if (Keyboard.current.leftArrowKey.isPressed)
+        private void HandleRotation()
         {
-            moveAmount.x -= KeyboardPanSpeed;
+            if (ShouldSetRotationStartTime())
+            {
+                rotationStartTime = Time.time;
+            }
+            float rotationTime = Mathf.Clamp01((Time.time - rotationStartTime) * cameraConfig.RotationSpeed);
+            Vector3 targetFollowOffset;
+            if (Keyboard.current.pageDownKey.isPressed)
+            {
+                targetFollowOffset = new Vector3(maxRotationAmount, cinemachineFollow.FollowOffset.y, 0);
+            }
+            else if (Keyboard.current.pageUpKey.isPressed)
+            {
+                targetFollowOffset = new Vector3(-maxRotationAmount, cinemachineFollow.FollowOffset.y, 0);
+            }
+            else
+            {
+                targetFollowOffset = new Vector3(startingFollowOffset.x, cinemachineFollow.FollowOffset.y, startingFollowOffset.z);
+
+            }
+            if (cinemachineFollow.FollowOffset != targetFollowOffset)
+            {
+                cinemachineFollow.FollowOffset = Vector3.Slerp(cinemachineFollow.FollowOffset, targetFollowOffset, rotationTime);
+            }
         }
 
-        if (Keyboard.current.downArrowKey.isPressed)
+        private bool ShouldSetRotationStartTime()
         {
-            moveAmount.y -= KeyboardPanSpeed;
+            return Keyboard.current.pageUpKey.wasPressedThisFrame ||
+            Keyboard.current.pageDownKey.wasPressedThisFrame ||
+            Keyboard.current.pageUpKey.wasReleasedThisFrame ||
+            Keyboard.current.pageDownKey.wasReleasedThisFrame;
         }
-        if (Keyboard.current.rightArrowKey.isPressed)
-        {
-            moveAmount.x += KeyboardPanSpeed;
-        }
-        moveAmount *= Time.deltaTime;
-        cameraTaret.position += new Vector3(moveAmount.x, 0, moveAmount.y);
-    }
 
-    private void HandleZooming()
-    {
-        if (ShooldSetZoomStartTime())
+        private void HandlePanning()
         {
-            zoomStartTime = Time.time;
-        }
-        float zoomTime = Mathf.Clamp01((Time.time - zoomStartTime) * zoomSpeed);
+            moveAmount = Vector2.zero;
 
-        if (Keyboard.current.endKey.isPressed)
-        {
-            targetFollowOffset = new Vector3(cinemachineFollow.FollowOffset.x, minZoomDistance, cinemachineFollow.FollowOffset.z);
-            cinemachineFollow.FollowOffset = Vector3.Slerp(startingFollowOffset, targetFollowOffset, zoomTime);
-        }
-        else
-        {
-            targetFollowOffset = new Vector3(cinemachineFollow.FollowOffset.x, startingFollowOffset.y, cinemachineFollow.FollowOffset.z);
-        }
-        cinemachineFollow.FollowOffset = Vector3.Slerp(cinemachineFollow.FollowOffset, targetFollowOffset, zoomTime);
-    }
+            if (Keyboard.current.upArrowKey.isPressed)
+            {
+                moveAmount.y += cameraConfig.KeyboardPanSpeed;
+            }
+            if (Keyboard.current.leftArrowKey.isPressed)
+            {
+                moveAmount.x -= cameraConfig.KeyboardPanSpeed;
+            }
 
-    private bool ShooldSetZoomStartTime()
-    {
-        return Keyboard.current.endKey.wasPressedThisFrame
-        || Keyboard.current.endKey.wasReleasedThisFrame;
+            if (Keyboard.current.downArrowKey.isPressed)
+            {
+                moveAmount.y -= cameraConfig.KeyboardPanSpeed;
+            }
+            if (Keyboard.current.rightArrowKey.isPressed)
+            {
+                moveAmount.x += cameraConfig.KeyboardPanSpeed;
+            }
+            moveAmount *= Time.deltaTime;
+            cameraTaret.position += new Vector3(moveAmount.x, 0, moveAmount.y);
+        }
+
+        private void HandleZooming()
+        {
+            if (ShooldSetZoomStartTime())
+            {
+                zoomStartTime = Time.time;
+            }
+            float zoomTime = Mathf.Clamp01((Time.time - zoomStartTime) * cameraConfig.ZoomSpeed);
+            Vector3 targetFollowOffset;
+            if (Keyboard.current.endKey.isPressed)
+            {
+                targetFollowOffset = new Vector3(cinemachineFollow.FollowOffset.x, cameraConfig.MinZoomDistance, cinemachineFollow.FollowOffset.z);
+                cinemachineFollow.FollowOffset = Vector3.Slerp(startingFollowOffset, targetFollowOffset, zoomTime);
+            }
+            else
+            {
+                targetFollowOffset = new Vector3(cinemachineFollow.FollowOffset.x, startingFollowOffset.y, cinemachineFollow.FollowOffset.z);
+            }
+            if (cinemachineFollow.FollowOffset != targetFollowOffset)
+            {
+                cinemachineFollow.FollowOffset = Vector3.Slerp(cinemachineFollow.FollowOffset, targetFollowOffset, zoomTime);
+            }
+        }
+
+        private bool ShooldSetZoomStartTime()
+        {
+            return Keyboard.current.endKey.wasPressedThisFrame
+            || Keyboard.current.endKey.wasReleasedThisFrame;
+        }
     }
 }
